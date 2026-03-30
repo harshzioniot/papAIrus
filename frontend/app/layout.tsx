@@ -20,7 +20,7 @@ export default function RootLayout({
 }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="en" className={`${inter.variable} ${dmSerif.variable}`}>
-      <body style={{ fontFamily: "var(--font-inter), sans-serif" }}>
+      <body style={{ fontFamily: "var(--font-inter), sans-serif" }} suppressHydrationWarning>
         <ThemeProvider>{children}</ThemeProvider>
       </body>
     </html>

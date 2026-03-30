@@ -1,5 +1,8 @@
+import asyncio
 import os
 from contextlib import asynccontextmanager
+from dotenv import load_dotenv
+load_dotenv()
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -8,6 +11,7 @@ from beanie import init_beanie
 
 from models import Entry, Node
 from routers import entries, nodes, graph, digest
+from services import nlp_service
 
 MONGO_URI = os.getenv("MONGO_URI", "mongodb://localhost:27017")
 DB_NAME = os.getenv("DB_NAME", "papairus")
@@ -19,6 +23,7 @@ os.makedirs(UPLOAD_DIR, exist_ok=True)
 async def lifespan(app: FastAPI):
     client = AsyncIOMotorClient(MONGO_URI)
     await init_beanie(database=client[DB_NAME], document_models=[Entry, Node])
+    await asyncio.to_thread(nlp_service.load_models)
     yield
     client.close()
 

@@ -1,0 +1,22 @@
+# Additional requirements for local Whisper backend
+# Install these ONLY if you want to use WHISPER_BACKEND=local
+
+# For Python 3.13 compatibility, install from git
+git+https://github.com/openai/whisper.git
+
+# PyTorch - choose based on your system:
+# For CUDA 11.8:
+torch>=2.0.0
+torchaudio>=2.0.0
+
+# For CUDA 12.1:
+# torch>=2.0.0 --index-url https://download.pytorch.org/whl/cu121
+# torchaudio>=2.0.0 --index-url https://download.pytorch.org/whl/cu121
+
+# For CPU only:
+# torch>=2.0.0 --index-url https://download.pytorch.org/whl/cpu
+# torchaudio>=2.0.0 --index-url https://download.pytorch.org/whl/cpu
+
+# Additional dependencies
+numba
+ffmpeg-python

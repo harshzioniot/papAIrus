@@ -8,10 +8,12 @@ import {
   getNodes,
   createNode,
   autoTag,
+  transcribeAudio,
   NodeOut,
 } from "@/lib/api";
 
-type Status = "idle" | "recording" | "processing" | "saved" | "error";
+type Status = "idle" | "recording" | "processing" | "transcribing" | "saved" | "error";
+type InputMode = "text" | "audio" | "both";
 
 const TYPE_COLORS: Record<string, string> = {
   emotion: "var(--coral)",
@@ -31,6 +33,7 @@ export default function RecordPage() {
   const [audioBlob, setAudioBlob] = useState<Blob | null>(null);
   const [errorMsg, setErrorMsg] = useState("");
   const [savedId, setSavedId] = useState<string | null>(null);
+  const [inputMode, setInputMode] = useState<InputMode>("both");
 
   const mediaRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
@@ -62,6 +65,20 @@ export default function RecordPage() {
   const stopRecording = () => {
     mediaRef.current?.stop();
     setStatus("idle");
+  };
+
+  const handleTranscribe = async () => {
+    if (!audioBlob) return;
+    setStatus("transcribing");
+    setErrorMsg("");
+    try {
+      const result = await transcribeAudio(audioBlob);
+      setTranscript(result.text);
+      setStatus("idle");
+    } catch {
+      setErrorMsg("Transcription failed. Check backend is running.");
+      setStatus("error");
+    }
   };
 
   const handleAutoTag = async () => {
@@ -163,86 +180,134 @@ export default function RecordPage() {
           >
             pap<span style={{ color: "var(--teal)" }}>AI</span>rus
           </div>
-          <div style={{ fontSize: 12, color: "var(--text2)", textAlign: "center", marginBottom: 24 }}>
+          <div style={{ fontSize: 12, color: "var(--text2)", textAlign: "center", marginBottom: 16 }}>
             How are you feeling today?
           </div>
 
-          {/* Orb */}
-          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", marginBottom: 20 }}>
-            <div
-              onMouseDown={startRecording}
-              onMouseUp={stopRecording}
-              onTouchStart={startRecording}
-              onTouchEnd={stopRecording}
-              style={{
-                width: 128,
-                height: 128,
-                borderRadius: "50%",
-                background: isRecording ? "var(--teal-bg)" : "var(--bg2)",
-                border: `2px solid ${isRecording ? "var(--teal)" : "var(--border2)"}`,
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                position: "relative",
-                cursor: "pointer",
-                transition: "all .2s",
-                boxShadow: isRecording ? "0 0 0 12px var(--teal-bg)" : "none",
-              }}
-            >
-              <div
+          {/* Input Mode Selector */}
+          <div style={{ display: "flex", gap: 4, marginBottom: 20, background: "var(--bg2)", borderRadius: 8, padding: 4 }}>
+            {(["text", "audio", "both"] as InputMode[]).map((mode) => (
+              <button
+                key={mode}
+                onClick={() => setInputMode(mode)}
                 style={{
-                  width: 80,
-                  height: 80,
+                  flex: 1,
+                  padding: "6px 8px",
+                  fontSize: 10,
+                  borderRadius: 6,
+                  border: "none",
+                  background: inputMode === mode ? "var(--teal)" : "transparent",
+                  color: inputMode === mode ? "#fff" : "var(--text3)",
+                  cursor: "pointer",
+                  fontWeight: inputMode === mode ? 600 : 400,
+                  textTransform: "capitalize",
+                  transition: "all .15s",
+                }}
+              >
+                {mode === "both" ? "📝+🎤" : mode === "text" ? "📝 Text" : "🎤 Audio"}
+              </button>
+            ))}
+          </div>
+
+          {/* Orb - only show if audio or both mode */}
+          {inputMode !== "text" && (
+            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", marginBottom: 20 }}>
+              <div
+                onMouseDown={startRecording}
+                onMouseUp={stopRecording}
+                onTouchStart={startRecording}
+                onTouchEnd={stopRecording}
+                style={{
+                  width: 128,
+                  height: 128,
                   borderRadius: "50%",
-                  background: isRecording ? "var(--teal)" : "var(--bg3)",
+                  background: isRecording ? "var(--teal-bg)" : "var(--bg2)",
+                  border: `2px solid ${isRecording ? "var(--teal)" : "var(--border2)"}`,
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "center",
-                  transition: "background .2s",
+                  position: "relative",
+                  cursor: "pointer",
+                  transition: "all .2s",
+                  boxShadow: isRecording ? "0 0 0 12px var(--teal-bg)" : "none",
                 }}
               >
-                {/* Mic icon */}
-                <svg width="36" height="36" viewBox="0 0 36 36" fill="none">
-                  <rect x="13" y="4" width="10" height="16" rx="5" fill={isRecording ? "white" : "var(--text3)"} />
-                  <path d="M8 18c0 5.523 4.477 10 10 10s10-4.477 10-10" stroke={isRecording ? "white" : "var(--text3)"} strokeWidth="2.2" strokeLinecap="round" fill="none" />
-                  <line x1="18" y1="28" x2="18" y2="33" stroke={isRecording ? "white" : "var(--text3)"} strokeWidth="2.2" strokeLinecap="round" />
-                  <line x1="13" y1="33" x2="23" y2="33" stroke={isRecording ? "white" : "var(--text3)"} strokeWidth="2.2" strokeLinecap="round" />
-                </svg>
+                <div
+                  style={{
+                    width: 80,
+                    height: 80,
+                    borderRadius: "50%",
+                    background: isRecording ? "var(--teal)" : "var(--bg3)",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    transition: "background .2s",
+                  }}
+                >
+                  {/* Mic icon */}
+                  <svg width="36" height="36" viewBox="0 0 36 36" fill="none">
+                    <rect x="13" y="4" width="10" height="16" rx="5" fill={isRecording ? "white" : "var(--text3)"} />
+                    <path d="M8 18c0 5.523 4.477 10 10 10s10-4.477 10-10" stroke={isRecording ? "white" : "var(--text3)"} strokeWidth="2.2" strokeLinecap="round" fill="none" />
+                    <line x1="18" y1="28" x2="18" y2="33" stroke={isRecording ? "white" : "var(--text3)"} strokeWidth="2.2" strokeLinecap="round" />
+                    <line x1="13" y1="33" x2="23" y2="33" stroke={isRecording ? "white" : "var(--text3)"} strokeWidth="2.2" strokeLinecap="round" />
+                  </svg>
+                </div>
               </div>
+              <div style={{ fontSize: 11, color: "var(--text3)", marginTop: 10 }}>
+                {isRecording ? "recording… release to stop" : "hold to record"}
+              </div>
+              {audioBlob && (
+                <>
+                  <audio
+                    controls
+                    src={URL.createObjectURL(audioBlob)}
+                    style={{ marginTop: 10, width: "100%", height: 32 }}
+                  />
+                  <button
+                    onClick={handleTranscribe}
+                    disabled={status === "transcribing"}
+                    style={{
+                      marginTop: 8,
+                      padding: "6px 16px",
+                      fontSize: 11,
+                      borderRadius: 6,
+                      background: "var(--teal-bg)",
+                      border: "1px solid var(--teal-border)",
+                      color: "var(--teal)",
+                      cursor: "pointer",
+                      fontWeight: 500,
+                    }}
+                  >
+                    {status === "transcribing" ? "Transcribing..." : "✨ Transcribe"}
+                  </button>
+                </>
+              )}
             </div>
-            <div style={{ fontSize: 11, color: "var(--text3)", marginTop: 10 }}>
-              {isRecording ? "recording… release to stop" : "hold to record"}
-            </div>
-            {audioBlob && (
-              <audio
-                controls
-                src={URL.createObjectURL(audioBlob)}
-                style={{ marginTop: 10, width: "100%", height: 32 }}
-              />
-            )}
-          </div>
+          )}
 
-          {/* Transcript */}
-          <textarea
-            value={transcript}
-            onChange={(e) => setTranscript(e.target.value)}
-            placeholder="Type or paste your thoughts here…"
-            rows={4}
-            style={{
-              width: "100%",
-              background: "var(--bg2)",
-              border: "1px solid var(--border)",
-              borderRadius: 8,
-              padding: "10px 13px",
-              fontSize: 12,
-              color: "var(--text2)",
-              lineHeight: 1.65,
-              resize: "vertical",
-              marginBottom: 10,
-              outline: "none",
-              fontFamily: "inherit",
-            }}
-          />
+          {/* Transcript - show if text or both mode */}
+          {inputMode !== "audio" && (
+            <textarea
+              value={transcript}
+              onChange={(e) => setTranscript(e.target.value)}
+              placeholder="Type or paste your thoughts here…"
+              rows={4}
+              style={{
+                width: "100%",
+                background: "var(--bg2)",
+                border: "1px solid var(--border)",
+                borderRadius: 8,
+                padding: "10px 13px",
+                fontSize: 12,
+                color: "var(--text2)",
+                lineHeight: 1.65,
+                resize: "vertical",
+                marginBottom: 10,
+                outline: "none",
+                fontFamily: "inherit",
+              }}
+            />
+          )}
 
           {/* Tags row */}
           <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 10 }}>

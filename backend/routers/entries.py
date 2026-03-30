@@ -6,18 +6,12 @@ import aiofiles
 
 from models import Entry, Node
 from schemas import EntryOut, NodeOut, AutoTagOut, TagSuggestion
+from services import stt_service, nlp_service, analysis_service
 
 router = APIRouter(prefix="/entries", tags=["entries"])
 
 UPLOAD_DIR = os.path.join(os.path.dirname(__file__), "..", "uploads")
 os.makedirs(UPLOAD_DIR, exist_ok=True)
-
-STUB_SUGGESTIONS = [
-    TagSuggestion(name="anxious", type="emotion"),
-    TagSuggestion(name="frustrated", type="emotion"),
-    TagSuggestion(name="work stress", type="theme"),
-    TagSuggestion(name="manager", type="person"),
-]
 
 
 async def _hydrate(entry: Entry) -> EntryOut:
@@ -95,9 +89,101 @@ async def set_tags(entry_id: str, node_ids: list[str]):
 
 @router.post("/{entry_id}/auto-tag", response_model=AutoTagOut)
 async def auto_tag(entry_id: str):
-    """Stub — replace with LLM/Whisper call later."""
     from beanie import PydanticObjectId
     entry = await Entry.get(PydanticObjectId(entry_id))
     if not entry:
         raise HTTPException(status_code=404, detail="Entry not found")
-    return AutoTagOut(suggestions=STUB_SUGGESTIONS)
+    if not entry.transcript or not entry.transcript.strip():
+        raise HTTPException(status_code=400, detail="Entry has no transcript to analyze")
+
+    # Layer 1 — local transformer inference (sync, run in thread)
+    import asyncio
+    layer1 = await asyncio.to_thread(nlp_service.run, entry.transcript)
+
+    # Layer 2 — GPT-4o-mini enriched with Layer 1 context
+    suggestions = await analysis_service.analyze(entry.transcript, layer1)
+
+    return AutoTagOut(suggestions=suggestions)
+
+
+@router.post("/{entry_id}/transcribe", response_model=EntryOut)
+async def transcribe_entry(entry_id: str, language: Optional[str] = None):
+    """
+    Transcribe the audio file associated with an entry using OpenAI Whisper.
+    Updates the entry's transcript field with the transcription result.
+    """
+    from beanie import PydanticObjectId
+    
+    entry = await Entry.get(PydanticObjectId(entry_id))
+    if not entry:
+        raise HTTPException(status_code=404, detail="Entry not found")
+    
+    if not entry.audio_path:
+        raise HTTPException(status_code=400, detail="No audio file associated with this entry")
+    
+    audio_full_path = os.path.join(UPLOAD_DIR, entry.audio_path)
+    if not os.path.exists(audio_full_path):
+        raise HTTPException(status_code=404, detail="Audio file not found on disk")
+    
+    try:
+        transcript = await stt_service.transcribe_audio(
+            audio_file_path=audio_full_path,
+            language=language
+        )
+        
+        entry.transcript = transcript
+        await entry.save()
+        
+        return await _hydrate(entry)
+        
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, 
+            detail=f"Transcription failed: {str(e)}"
+        )
+
+
+@router.post("/transcribe-upload", response_model=dict)
+async def transcribe_upload(
+    audio: UploadFile = File(...),
+    language: Optional[str] = None,
+    with_timestamps: bool = False
+):
+    """
+    Transcribe an uploaded audio file without creating an entry.
+    Useful for testing or getting quick transcriptions.
+    """
+    if not audio.filename:
+        raise HTTPException(status_code=400, detail="No audio file provided")
+    
+    ext = os.path.splitext(audio.filename)[1] or ".webm"
+    temp_fname = f"temp_{uuid.uuid4().hex}{ext}"
+    temp_path = os.path.join(UPLOAD_DIR, temp_fname)
+    
+    try:
+        async with aiofiles.open(temp_path, "wb") as f:
+            await f.write(await audio.read())
+        
+        if with_timestamps:
+            result = await stt_service.transcribe_with_timestamps(
+                audio_file_path=temp_path,
+                language=language
+            )
+        else:
+            transcript = await stt_service.transcribe_audio(
+                audio_file_path=temp_path,
+                language=language
+            )
+            result = {"text": transcript}
+        
+        os.remove(temp_path)
+        
+        return result
+        
+    except Exception as e:
+        if os.path.exists(temp_path):
+            os.remove(temp_path)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Transcription failed: {str(e)}"
+        )

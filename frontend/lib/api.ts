@@ -64,7 +64,16 @@ export interface TagSuggestion {
 
 async function req<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${BASE}${path}`, init);
-  if (!res.ok) throw new Error(`API error ${res.status}: ${path}`);
+  if (!res.ok) {
+    let detail = "";
+    try {
+      const body = await res.json();
+      detail = body?.detail ?? JSON.stringify(body);
+    } catch {
+      detail = await res.text().catch(() => "");
+    }
+    throw new Error(`API error ${res.status}: ${path}${detail ? ` — ${detail}` : ""}`);
+  }
   return res.json() as Promise<T>;
 }
 
@@ -102,6 +111,31 @@ export async function setTags(entryId: string, nodeIds: string[]): Promise<Entry
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(nodeIds),
   });
+}
+
+export async function transcribeEntry(entryId: string, language?: string): Promise<EntryOut> {
+  const qs = language ? `?language=${language}` : "";
+  return req<EntryOut>(`/entries/${entryId}/transcribe${qs}`, { method: "POST" });
+}
+
+export interface TranscribeWord {
+  word: string;
+  start: number;
+  end: number;
+}
+
+export async function transcribeAudio(
+  audio: Blob,
+  language?: string,
+  withTimestamps?: boolean
+): Promise<{ text: string; language?: string; duration?: number; words?: TranscribeWord[] }> {
+  const fd = new FormData();
+  fd.append("audio", audio, "recording.webm");
+  if (language) fd.append("language", language);
+  if (withTimestamps) fd.append("with_timestamps", "true");
+  const res = await fetch(`${BASE}/entries/transcribe-upload`, { method: "POST", body: fd });
+  if (!res.ok) throw new Error("Transcription failed");
+  return res.json();
 }
 
 // Nodes
