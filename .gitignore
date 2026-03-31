@@ -17,3 +17,5 @@ frontend/.env.local
 *.log
 
 .env
+*.pyc
+__pycache__/
