@@ -9,7 +9,7 @@ from fastapi.staticfiles import StaticFiles
 from motor.motor_asyncio import AsyncIOMotorClient
 from beanie import init_beanie
 
-from models import Entry, Node
+from models import Entry, Node, Edge
 from routers import entries, nodes, graph, digest
 from services import nlp_service
 
@@ -22,7 +22,7 @@ os.makedirs(UPLOAD_DIR, exist_ok=True)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     client = AsyncIOMotorClient(MONGO_URI)
-    await init_beanie(database=client[DB_NAME], document_models=[Entry, Node])
+    await init_beanie(database=client[DB_NAME], document_models=[Entry, Node, Edge])
     await asyncio.to_thread(nlp_service.load_models)
     yield
     client.close()

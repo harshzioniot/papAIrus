@@ -3,20 +3,13 @@ from datetime import datetime, timedelta
 from typing import Optional
 from fastapi import APIRouter, Query
 
-from models import Entry, Node
+from models import Entry, Node, Edge
 from schemas import DigestOut, PersonMention, DayIntensity
+from services import graph_service
 
 router = APIRouter(prefix="/digest", tags=["digest"])
 
 DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
-
-REFLECTIONS = [
-    "You mention your manager every time you feel invisible. What would it look like to feel seen?",
-    "You've felt anxious most days this week. What small thing helped you feel grounded, even briefly?",
-    "Work stress keeps coming up. What's one boundary you could set next week?",
-    "You mentioned feeling frustrated multiple times. What's underneath that feeling?",
-    "Notice any patterns between your habits and your mood this week?",
-]
 
 
 def _week_bounds(week_str: Optional[str]) -> tuple[datetime, datetime]:
@@ -75,13 +68,24 @@ async def get_digest(week: Optional[str] = Query(None)):
     prev_count = prev_emo[top_emotion] if top_emotion else 0
     mood_trend = round(((top_count - prev_count) / prev_count * 100) if prev_count else 0.0, 1)
 
-    node_freq: Counter = Counter()
-    for e in current:
-        for nid in e.node_ids:
-            n = node_map.get(nid)
-            if n:
-                node_freq[n.name] += 1
-    most_conn = node_freq.most_common(1)[0] if node_freq else (None, 0)
+    # Most connected node — use PageRank on the week's subgraph
+    week_edges = await Edge.find(
+        Edge.timestamp >= week_start, Edge.timestamp < week_end
+    ).to_list()
+    week_nodes = list(node_map.values())
+    G = graph_service.build_digraph(week_nodes, week_edges)
+    centrality = graph_service.get_centrality(G, top_n=1)
+    if centrality:
+        most_conn = (centrality[0]["name"], centrality[0]["score"])
+    else:
+        # Fallback to frequency count if graph is too sparse for PageRank
+        node_freq: Counter = Counter()
+        for e in current:
+            for nid in e.node_ids:
+                n = node_map.get(nid)
+                if n:
+                    node_freq[n.name] += 1
+        most_conn = node_freq.most_common(1)[0] if node_freq else (None, 0)
 
     # Per-day
     day_buckets: dict[int, list[Entry]] = defaultdict(list)
@@ -112,7 +116,7 @@ async def get_digest(week: Optional[str] = Query(None)):
             if n and n.type == "person":
                 people[n.name] += 1
 
-    reflection = REFLECTIONS[week_start.isocalendar()[1] % len(REFLECTIONS)]
+    reflection = graph_service.generate_reflection(centrality, top_emotion)
 
     return DigestOut(
         week_start=week_start.date().isoformat(),

@@ -42,11 +42,43 @@ class GraphEdge(BaseModel):
     source: str
     target: str
     weight: int
+    edge_type: str = ""
 
 
 class GraphOut(BaseModel):
     nodes: list[GraphNode]
     edges: list[GraphEdge]
+
+
+# ── Graph algorithm outputs ───────────────────────────────────────────────────
+
+class CentralNode(BaseModel):
+    id: str
+    name: str
+    type: str
+    score: float
+
+
+class TrendNode(BaseModel):
+    id: str
+    name: str
+    type: str
+    recent: int
+    previous: int
+    delta_pct: float
+
+
+class InsightsOut(BaseModel):
+    centrality: list[CentralNode]
+    communities: list[list[NodeOut]]
+    trending_up: list[TrendNode]
+    trending_down: list[TrendNode]
+
+
+class PathNode(BaseModel):
+    id: str
+    name: str
+    type: str
 
 
 # ── Digest ────────────────────────────────────────────────────────────────────
