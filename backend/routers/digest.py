@@ -1,5 +1,5 @@
 from collections import Counter, defaultdict
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 from fastapi import APIRouter, Query
 
@@ -13,10 +13,11 @@ DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
 
 
 def _week_bounds(week_str: Optional[str]) -> tuple[datetime, datetime]:
-    base = datetime.utcnow()
+    base = datetime.now(timezone.utc)
     if week_str:
         try:
-            base = datetime.fromisoformat(week_str)
+            parsed = datetime.fromisoformat(week_str)
+            base = parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
         except ValueError:
             pass
     start = base - timedelta(days=base.weekday())
@@ -75,17 +76,24 @@ async def get_digest(week: Optional[str] = Query(None)):
     week_nodes = list(node_map.values())
     G = graph_service.build_digraph(week_nodes, week_edges)
     centrality = graph_service.get_centrality(G, top_n=1)
+
+    # Always use edge-frequency count for most_connected_count (PageRank score
+    # is a float 0-1, not a human-readable count — use it only for reflection).
+    node_freq: Counter = Counter()
+    for e in current:
+        for nid in e.node_ids:
+            n = node_map.get(nid)
+            if n:
+                node_freq[n.name] += 1
+
     if centrality:
-        most_conn = (centrality[0]["name"], centrality[0]["score"])
+        most_conn_name = centrality[0]["name"]
+        most_conn_count = node_freq.get(most_conn_name, 0)
     else:
-        # Fallback to frequency count if graph is too sparse for PageRank
-        node_freq: Counter = Counter()
-        for e in current:
-            for nid in e.node_ids:
-                n = node_map.get(nid)
-                if n:
-                    node_freq[n.name] += 1
-        most_conn = node_freq.most_common(1)[0] if node_freq else (None, 0)
+        top = node_freq.most_common(1)
+        most_conn_name = top[0][0] if top else None
+        most_conn_count = top[0][1] if top else 0
+    most_conn = (most_conn_name, most_conn_count)
 
     # Per-day
     day_buckets: dict[int, list[Entry]] = defaultdict(list)

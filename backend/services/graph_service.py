@@ -36,8 +36,12 @@ def build_digraph(nodes: list[Node], edges: list[Edge]) -> nx.DiGraph:
         u, v = e.from_node_id, e.to_node_id
         if G.has_edge(u, v):
             G[u][v]["weight"] += 1
+            G[u][v]["edge_types"].add(e.edge_type)
+            if e.is_causal:
+                G[u][v]["is_causal"] = True
         else:
-            G.add_edge(u, v, edge_type=e.edge_type, weight=1, is_causal=e.is_causal)
+            G.add_edge(u, v, edge_type=e.edge_type, edge_types={e.edge_type},
+                       weight=1, is_causal=e.is_causal)
 
     return G
 

@@ -19,8 +19,25 @@ UPLOAD_DIR = os.path.join(os.path.dirname(__file__), "uploads")
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 
+def _print_banner():
+    stt = os.getenv("WHISPER_BACKEND", "api").upper()
+    model = os.getenv("WHISPER_MODEL_SIZE", "base") if stt == "LOCAL" else "whisper-1 (cloud)"
+    has_openai = bool(os.getenv("OPENAI_API_KEY"))
+    has_gemini = bool(os.getenv("GEMINI_API_KEY"))
+    print("\n" + "=" * 44)
+    print("  papAIrus backend")
+    print("=" * 44)
+    print(f"  MongoDB  : {MONGO_URI}")
+    print(f"  Database : {DB_NAME}")
+    print(f"  STT      : {stt} ({model})")
+    print(f"  OpenAI   : {'set' if has_openai else 'NOT SET'}")
+    print(f"  Gemini   : {'set' if has_gemini else 'NOT SET'}")
+    print("=" * 44 + "\n")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    _print_banner()
     client = AsyncIOMotorClient(MONGO_URI)
     await init_beanie(database=client[DB_NAME], document_models=[Entry, Node, Edge])
     await asyncio.to_thread(nlp_service.load_models)
