@@ -55,7 +55,10 @@ def get_centrality(G: nx.DiGraph, top_n: int = 10) -> list[dict]:
     """
     if len(G) == 0:
         return []
-    scores = nx.pagerank(G, alpha=0.85, weight="weight")
+    try:
+        scores = nx.pagerank(G, alpha=0.85, weight="weight")
+    except nx.PowerIterationFailedConvergence:
+        scores = dict.fromkeys(G.nodes, 1.0 / len(G))
     ranked = sorted(scores.items(), key=lambda x: x[1], reverse=True)[:top_n]
     return [
         {

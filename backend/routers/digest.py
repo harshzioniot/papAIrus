@@ -43,8 +43,8 @@ async def get_digest(week: Optional[str] = Query(None)):
     week_start, week_end = _week_bounds(week)
     prev_start = week_start - timedelta(days=7)
 
-    current = await Entry.find(Entry.created_at >= week_start, Entry.created_at < week_end).to_list()
-    prev = await Entry.find(Entry.created_at >= prev_start, Entry.created_at < week_start).to_list()
+    current = await Entry.find({"created_at": {"$gte": week_start, "$lt": week_end}}).to_list()
+    prev = await Entry.find({"created_at": {"$gte": prev_start, "$lt": week_start}}).to_list()
 
     # Gather all node ids we need
     all_ids = {nid for e in current + prev for nid in e.node_ids}
@@ -71,7 +71,7 @@ async def get_digest(week: Optional[str] = Query(None)):
 
     # Most connected node — use PageRank on the week's subgraph
     week_edges = await Edge.find(
-        Edge.timestamp >= week_start, Edge.timestamp < week_end
+        {"timestamp": {"$gte": week_start, "$lt": week_end}}
     ).to_list()
     week_nodes = list(node_map.values())
     G = graph_service.build_digraph(week_nodes, week_edges)
