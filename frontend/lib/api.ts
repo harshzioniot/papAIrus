@@ -65,12 +65,13 @@ export interface TagSuggestion {
 async function req<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${BASE}${path}`, init);
   if (!res.ok) {
-    let detail = "";
+    const text = await res.text().catch(() => "");
+    let detail = text;
     try {
-      const body = await res.json();
-      detail = body?.detail ?? JSON.stringify(body);
-    } catch {
-      detail = await res.text().catch(() => "");
+      const body = JSON.parse(text);
+      detail = body?.detail ?? text;
+    } catch (_e) {
+      // raw text is already set as detail
     }
     throw new Error(`API error ${res.status}: ${path}${detail ? ` — ${detail}` : ""}`);
   }

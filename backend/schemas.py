@@ -119,3 +119,22 @@ class TagSuggestion(BaseModel):
 
 class AutoTagOut(BaseModel):
     suggestions: list[TagSuggestion]
+
+
+# ── Chat ──────────────────────────────────────────────────────────────────────
+
+class ContextNode(BaseModel):
+    id: str
+    name: str
+    type: str
+
+
+class ChatRequest(BaseModel):
+    message: str
+    persona: Optional[str] = None  # stoic | socratic | analyst — falls back to CHAT_PERSONA env
+
+
+class ChatOut(BaseModel):
+    reply: str
+    context_nodes: list[ContextNode] = []
+    persona: str

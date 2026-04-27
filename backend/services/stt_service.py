@@ -7,24 +7,10 @@ import aiofiles
 
 class STTService:
     def __init__(self):
-        """
-        Initialize STT service with configurable backend.
-        
-        Backend is determined by WHISPER_BACKEND env var:
-        - "api" or "openai": Use OpenAI Whisper API (requires OPENAI_API_KEY)
-        - "local": Use local Whisper model (requires GPU/CPU, downloads model)
-        
-        Default: "local" if no API key, otherwise "api"
-        """
-        self.backend = os.getenv("WHISPER_BACKEND", "").lower()
-        
-        if not self.backend:
-            if os.getenv("OPENAI_API_KEY"):
-                self.backend = "api"
-            else:
-                self.backend = "local"
-        
-        print(f"🎤 STT Backend: {self.backend.upper()}")
+        # WHISPER_BACKEND: "api" (default) or "local"
+        # Set to "local" only if you have ffmpeg + whisper installed and want offline transcription.
+        # On CPU, "api" is strongly recommended.
+        self.backend = os.getenv("WHISPER_BACKEND", "api").lower()
         
         if self.backend in ["api", "openai"]:
             self._init_api_backend()
@@ -182,7 +168,7 @@ class STTService:
         try:
             self._ensure_model_loaded()
             
-            loop = asyncio.get_event_loop()
+            loop = asyncio.get_running_loop()
             result = await loop.run_in_executor(
                 None,
                 lambda: self.model.transcribe(
@@ -207,7 +193,7 @@ class STTService:
         try:
             self._ensure_model_loaded()
             
-            loop = asyncio.get_event_loop()
+            loop = asyncio.get_running_loop()
             result = await loop.run_in_executor(
                 None,
                 lambda: self.model.transcribe(

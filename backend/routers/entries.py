@@ -45,7 +45,7 @@ async def _upsert_node(name: str, node_type: str) -> Node:
     return node
 
 
-async def _run_pipeline(entry: Entry) -> None:
+async def _run_pipeline(entry: Entry) -> list:
     """
     Full analysis pipeline for one entry:
       Layer 1 (local NER + emotion)
@@ -53,11 +53,12 @@ async def _run_pipeline(entry: Entry) -> None:
       → upsert nodes, update entry.node_ids
       → infer + persist edges
 
-    Called as a background task — never blocks the HTTP response.
+    Returns the list of TagSuggestion objects (empty on failure).
+    Called as a background task from create_entry — never blocks the HTTP response.
     """
     entry_id = str(entry.id)
     if not entry.transcript or not entry.transcript.strip():
-        return
+        return []
 
     try:
         # Layer 1 — sync transformer inference, run in thread
@@ -67,7 +68,7 @@ async def _run_pipeline(entry: Entry) -> None:
         suggestions = await analysis_service.analyze(entry.transcript, layer1)
         if not suggestions:
             logger.warning("Pipeline: no tags returned for entry %s", entry_id)
-            return
+            return []
 
         # Persist nodes
         tag_dicts = [{"name": s.name, "type": s.type} for s in suggestions]
@@ -98,9 +99,11 @@ async def _run_pipeline(entry: Entry) -> None:
             ).insert()
 
         logger.info("Pipeline: entry %s → %d nodes, %d edges", entry_id, len(nodes), len(inferred))
+        return suggestions
 
     except Exception:
         logger.exception("Pipeline failed for entry %s", entry_id)
+        return []
 
 
 # ── routes ────────────────────────────────────────────────────────────────────
@@ -176,12 +179,7 @@ async def auto_tag(entry_id: str):
     if not entry.transcript or not entry.transcript.strip():
         raise HTTPException(status_code=400, detail="Entry has no transcript to analyze")
 
-    await _run_pipeline(entry)
-
-    # Re-fetch to return updated node list
-    await entry.sync()
-    layer1 = await asyncio.to_thread(nlp_service.run, entry.transcript)
-    suggestions = await analysis_service.analyze(entry.transcript, layer1)
+    suggestions = await _run_pipeline(entry)
     return AutoTagOut(suggestions=suggestions)
 
 

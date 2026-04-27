@@ -1,10 +1,10 @@
 from collections import defaultdict
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 from fastapi import APIRouter, Query
 
-from models import Entry, Node, Edge
-from schemas import GraphOut, GraphNode, GraphEdge, InsightsOut, CentralNode, TrendNode, PathNode
+from models import Entry, Node, Edge, NODE_COLOURS
+from schemas import GraphOut, GraphNode, GraphEdge, InsightsOut, CentralNode, TrendNode, PathNode, NodeOut
 from services import graph_service
 
 router = APIRouter(prefix="/graph", tags=["graph"])
@@ -22,7 +22,8 @@ async def get_graph(
     since_dt = None
     if since:
         try:
-            since_dt = datetime.fromisoformat(since)
+            parsed = datetime.fromisoformat(since)
+            since_dt = parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
         except ValueError:
             pass
 
@@ -83,7 +84,8 @@ async def get_insights(since: Optional[str] = Query(None)):
     since_dt = None
     if since:
         try:
-            since_dt = datetime.fromisoformat(since)
+            parsed = datetime.fromisoformat(since)
+            since_dt = parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
         except ValueError:
             pass
 
@@ -97,7 +99,15 @@ async def get_insights(since: Optional[str] = Query(None)):
     return InsightsOut(
         centrality=[CentralNode(**c) for c in centrality],
         communities=[
-            [PathNode(id=m["id"], name=m["name"], type=m["type"]) for m in cluster]
+            [
+                NodeOut(
+                    id=m["id"],
+                    name=m["name"],
+                    type=m["type"],
+                    color_hex=NODE_COLOURS.get(m["type"], "#cccccc"),
+                )
+                for m in cluster
+            ]
             for cluster in communities
         ],
         trending_up=[TrendNode(**t) for t in trending["up"]],

@@ -22,11 +22,14 @@ export default function DigestPage() {
   const [weekDate, setWeekDate] = useState<string>(new Date().toISOString().slice(0, 10));
   const [digest, setDigest] = useState<DigestOut | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     setLoading(true);
+    setError(null);
     getDigest(weekDate)
       .then(setDigest)
+      .catch((e: Error) => setError(e.message))
       .finally(() => setLoading(false));
   }, [weekDate]);
 
@@ -55,7 +58,13 @@ export default function DigestPage() {
           <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", color: "var(--text3)", fontSize: 13 }}>Loading…</div>
         )}
 
-        {!loading && digest && (
+        {!loading && error && (
+          <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", color: "var(--coral, #f87171)", fontSize: 13 }}>
+            {error}
+          </div>
+        )}
+
+        {!loading && !error && digest && (
           <div style={{ flex: 1, padding: 16, overflowY: "auto", display: "flex", flexDirection: "column", gap: 10 }}>
             {/* Stat cards */}
             <div style={{ display: "flex", gap: 8 }}>
