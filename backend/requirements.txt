@@ -13,6 +13,8 @@ openai>=1.57.0
 # NLP — transformer models (Layer 1)
 transformers>=4.40.0
 torch>=2.2.0
+sentence-transformers>=2.5.0
+numpy>=1.24.0
 # CPU-only torch (smaller download, ~500MB vs ~2GB):
 #   pip install torch --index-url https://download.pytorch.org/whl/cpu
 

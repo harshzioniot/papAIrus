@@ -1,10 +1,14 @@
 import { NodeOut } from "@/lib/api";
 
 const TYPE_STYLE: Record<string, { bg: string; color: string; border: string }> = {
-  emotion: { bg: "var(--purple-bg)", color: "var(--purple)", border: "var(--purple-border)" },
-  person:  { bg: "var(--blue-bg)",   color: "var(--blue)",   border: "var(--blue-border)"   },
-  theme:   { bg: "var(--teal-bg)",   color: "var(--teal)",   border: "var(--teal-border)"   },
-  habit:   { bg: "var(--amber-bg)",  color: "var(--amber)",  border: "var(--amber-border)"  },
+  emotion:  { bg: "var(--purple-bg)", color: "var(--purple)", border: "var(--purple-border)" },
+  person:   { bg: "var(--blue-bg)",   color: "var(--blue)",   border: "var(--blue-border)"   },
+  theme:    { bg: "var(--teal-bg)",   color: "var(--teal)",   border: "var(--teal-border)"   },
+  habit:    { bg: "var(--amber-bg)",  color: "var(--amber)",  border: "var(--amber-border)"  },
+  event:    { bg: "var(--purple-bg)", color: "var(--purple)", border: "var(--purple-border)" },
+  place:    { bg: "var(--teal-bg)",   color: "var(--teal2)",  border: "var(--teal-border)"   },
+  decision: { bg: "var(--coral-bg)",  color: "var(--coral)",  border: "var(--coral-border)"  },
+  outcome:  { bg: "var(--blue-bg)",   color: "var(--blue)",   border: "var(--blue-border)"   },
 };
 
 interface Props {

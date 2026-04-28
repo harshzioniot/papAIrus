@@ -57,6 +57,7 @@ class Entry(Document):
     audio_path: Optional[str] = None
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     node_ids: list[str] = Field(default_factory=list)
+    embedding: Optional[list[float]] = None  # 384-d sentence-transformers vector
 
     class Settings:
         name = "entries"

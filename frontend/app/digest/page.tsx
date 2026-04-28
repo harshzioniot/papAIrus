@@ -4,13 +4,30 @@ import { useEffect, useState } from "react";
 import Sidebar from "@/components/Sidebar";
 import { getDigest, DigestOut } from "@/lib/api";
 
-const DAY_COLORS: Record<string, string> = {
-  emotion: "var(--purple-border)",
-  person:  "var(--blue-border)",
-  theme:   "var(--teal-border)",
-  habit:   "var(--amber-border)",
-  neutral: "var(--border2)",
+// Lexical polarity map — covers the emotion vocabulary the LLM commonly produces.
+// +1 = positive, -1 = negative, 0 = neutral / ambiguous.
+const EMOTION_POLARITY: Record<string, number> = {
+  joy: 1, relief: 1, calm: 1, content: 1, contentment: 1, gratitude: 1,
+  hope: 1, hopeful: 1, pride: 1, love: 1, excitement: 1, excited: 1,
+  satisfaction: 1, peace: 1, peaceful: 1, optimism: 1, ease: 1,
+  happy: 1, happiness: 1, grateful: 1, lighter: 1, motivated: 1,
+  anxiety: -1, anxious: -1, fear: -1, afraid: -1, sadness: -1, sad: -1,
+  anger: -1, angry: -1, frustration: -1, frustrated: -1, stress: -1,
+  stressed: -1, worry: -1, worried: -1, dread: -1, shame: -1, guilt: -1,
+  loneliness: -1, lonely: -1, exhaustion: -1, exhausted: -1, drained: -1,
+  overwhelm: -1, overwhelmed: -1, grief: -1, despair: -1, regret: -1,
+  surprise: 0, surprised: 0, curiosity: 0, neutral: 0,
 };
+
+function polarityOf(name: string): number {
+  const key = name.toLowerCase().trim();
+  if (key in EMOTION_POLARITY) return EMOTION_POLARITY[key];
+  // Substring fallback for compound names like "quiet anxiety", "deep relief"
+  for (const [k, v] of Object.entries(EMOTION_POLARITY)) {
+    if (key.includes(k)) return v;
+  }
+  return 0;
+}
 
 function addDays(isoDate: string, n: number) {
   const d = new Date(isoDate);
@@ -95,25 +112,100 @@ export default function DigestPage() {
 
             {/* Chart + right column */}
             <div style={{ display: "flex", gap: 10, flex: 1 }}>
-              {/* Bar chart */}
+              {/* Mood timeline — signed bars by emotion polarity */}
               <div style={{ flex: 2, background: "var(--bg2)", border: "1px solid var(--border)", borderRadius: 12, padding: 14 }}>
-                <div style={{ fontSize: 11, color: "var(--text2)", fontWeight: 500, marginBottom: 12 }}>Emotion intensity by day</div>
-                <div style={{ display: "flex", gap: 6, alignItems: "flex-end", height: 90 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 14 }}>
+                  <div style={{ fontSize: 11, color: "var(--text2)", fontWeight: 500 }}>Mood by day</div>
+                  <div style={{ display: "flex", gap: 12, fontSize: 9, color: "var(--text3)" }}>
+                    <span style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                      <span style={{ width: 8, height: 8, borderRadius: 2, background: "var(--teal)" }} /> positive
+                    </span>
+                    <span style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                      <span style={{ width: 8, height: 8, borderRadius: 2, background: "var(--coral)" }} /> negative
+                    </span>
+                    <span style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                      <span style={{ width: 8, height: 8, borderRadius: 2, background: "var(--border2)" }} /> none
+                    </span>
+                  </div>
+                </div>
+
+                <div style={{ display: "flex", gap: 6, alignItems: "stretch", height: 130, position: "relative" }}>
+                  {/* Zero line */}
+                  <div style={{
+                    position: "absolute",
+                    left: 0, right: 0,
+                    top: "50%",
+                    height: 1,
+                    background: "var(--border)",
+                    pointerEvents: "none",
+                  }} />
+
                   {digest.days.map((d) => {
-                    const pct = maxCount > 0 ? (d.count / maxCount) * 100 : 0;
+                    const polarity = d.count > 0 ? polarityOf(d.dominant_type) : 0;
+                    const pct = maxCount > 0 ? (d.count / maxCount) * 50 : 0; // half-height max
+                    const isPositive = polarity > 0;
+                    const isNegative = polarity < 0;
+                    const barColor = isPositive ? "var(--teal)" : isNegative ? "var(--coral)" : "var(--border2)";
+                    const labelColor = isPositive ? "var(--teal)" : isNegative ? "var(--coral)" : "var(--text3)";
+
                     return (
-                      <div key={d.day} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
-                        <div
-                          style={{
-                            width: "100%",
-                            height: `${pct}%`,
-                            minHeight: pct > 0 ? 4 : 0,
-                            background: DAY_COLORS[d.dominant_type] ?? "var(--border2)",
-                            borderRadius: "3px 3px 0 0",
-                            transition: "height .3s",
-                          }}
-                        />
-                        <div style={{ fontSize: 8, color: "var(--text3)" }}>{d.day}</div>
+                      <div
+                        key={d.day}
+                        title={d.count > 0 ? `${d.day} ${d.date} — ${d.count} emotion mention${d.count === 1 ? "" : "s"}, dominant: ${d.dominant_type}` : `${d.day} ${d.date} — no entries`}
+                        style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", position: "relative" }}
+                      >
+                        {/* Top half (positive) */}
+                        <div style={{ flex: 1, width: "100%", display: "flex", alignItems: "flex-end", justifyContent: "center" }}>
+                          {isPositive && (
+                            <div style={{
+                              width: "62%",
+                              height: `${pct * 2}%`,
+                              minHeight: 4,
+                              background: barColor,
+                              borderRadius: "4px 4px 0 0",
+                              transition: "height .35s ease",
+                            }} />
+                          )}
+                        </div>
+
+                        {/* Bottom half (negative) */}
+                        <div style={{ flex: 1, width: "100%", display: "flex", alignItems: "flex-start", justifyContent: "center" }}>
+                          {isNegative && (
+                            <div style={{
+                              width: "62%",
+                              height: `${pct * 2}%`,
+                              minHeight: 4,
+                              background: barColor,
+                              borderRadius: "0 0 4px 4px",
+                              transition: "height .35s ease",
+                            }} />
+                          )}
+                          {polarity === 0 && d.count > 0 && (
+                            <div style={{
+                              width: "62%",
+                              height: 4,
+                              marginTop: -2,
+                              background: barColor,
+                              borderRadius: 2,
+                            }} />
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {/* Day labels + dominant emotion name */}
+                <div style={{ display: "flex", gap: 6, marginTop: 6 }}>
+                  {digest.days.map((d) => {
+                    const polarity = d.count > 0 ? polarityOf(d.dominant_type) : 0;
+                    const labelColor = polarity > 0 ? "var(--teal)" : polarity < 0 ? "var(--coral)" : "var(--text3)";
+                    return (
+                      <div key={d.day} style={{ flex: 1, textAlign: "center", lineHeight: 1.3 }}>
+                        <div style={{ fontSize: 10, color: "var(--text2)", fontWeight: 500 }}>{d.day}</div>
+                        <div style={{ fontSize: 9, color: labelColor, minHeight: 12, marginTop: 1, textTransform: "lowercase" }}>
+                          {d.count > 0 ? d.dominant_type : ""}
+                        </div>
                       </div>
                     );
                   })}

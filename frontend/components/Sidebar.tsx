@@ -6,6 +6,7 @@ import { useTheme } from "./ThemeProvider";
 
 const NAV = [
   { href: "/record", label: "Record", dot: "teal" },
+  { href: "/chat", label: "Chat", dot: "coral" },
   { href: "/graph", label: "Graph", dot: "purple" },
   { href: "/digest", label: "Digest", dot: "amber" },
   { href: "/history", label: "History", dot: "gray" },
@@ -15,6 +16,7 @@ const DOT_COLORS: Record<string, string> = {
   teal: "var(--teal)",
   purple: "var(--purple)",
   amber: "var(--amber)",
+  coral: "var(--coral)",
   gray: "var(--text3)",
 };
 

@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import os
+import re
 import uuid
 from typing import Optional
 from fastapi import APIRouter, BackgroundTasks, HTTPException, Form, UploadFile, File, status
@@ -8,7 +9,7 @@ import aiofiles
 
 from models import Entry, Node, Edge, NODE_COLOURS
 from schemas import EntryOut, NodeOut, AutoTagOut
-from services import stt_service, nlp_service, analysis_service, edge_service
+from services import stt_service, nlp_service, analysis_service, edge_service, embedding_service
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/entries", tags=["entries"])
@@ -36,8 +37,34 @@ async def _hydrate(entry: Entry) -> EntryOut:
     )
 
 
+def _normalize_name(name: str, node_type: str) -> str:
+    """Canonicalize tag names so 'Sarah' / 'sarah' / 'my_colleague_sarah' don't fork into three nodes."""
+    # strip whitespace, replace underscores with spaces, collapse internal spaces
+    name = " ".join(name.replace("_", " ").split())
+    # strip parentheticals: "Sarah (colleague)" → "Sarah"
+    if "(" in name:
+        name = name.split("(")[0].strip()
+    # strip leading articles
+    for prefix in ("the ", "a ", "an ", "my ", "our "):
+        if name.lower().startswith(prefix):
+            name = name[len(prefix):]
+    if node_type == "person":
+        # title-case, take first name only
+        name = name.split()[0] if name.split() else name
+        name = name.capitalize()
+    else:
+        name = name.lower()
+    return name.strip()
+
+
 async def _upsert_node(name: str, node_type: str) -> Node:
-    existing = await Node.find_one(Node.name == name, Node.type == node_type)
+    name = _normalize_name(name, node_type)
+    if not name:
+        return None
+    # case-insensitive lookup
+    existing = await Node.find_one(
+        {"name": {"$regex": f"^{re.escape(name)}$", "$options": "i"}, "type": node_type}
+    )
     if existing:
         return existing
     node = Node(name=name, type=node_type, color_hex=NODE_COLOURS.get(node_type, "#cccccc"))
@@ -61,6 +88,11 @@ async def _run_pipeline(entry: Entry) -> list:
         return []
 
     try:
+        # Embed transcript for semantic RAG (skip if already embedded and unchanged in length)
+        if not entry.embedding:
+            entry.embedding = await asyncio.to_thread(embedding_service.embed, entry.transcript)
+            await entry.save()
+
         # Layer 1 — sync transformer inference, run in thread
         layer1 = await asyncio.to_thread(nlp_service.run, entry.transcript)
 
@@ -70,12 +102,28 @@ async def _run_pipeline(entry: Entry) -> list:
             logger.warning("Pipeline: no tags returned for entry %s", entry_id)
             return []
 
-        # Persist nodes
-        tag_dicts = [{"name": s.name, "type": s.type} for s in suggestions]
+        # BERT anchor: guarantee every BERT-detected person becomes a person tag
+        # using BERT's clean spelling, even if the LLM dropped or renamed them.
+        from schemas import TagSuggestion
+        seen_people = {_normalize_name(s.name, "person") for s in suggestions if s.type == "person"}
+        for bert_person in layer1.get("people", []):
+            canonical = _normalize_name(bert_person, "person")
+            if canonical and canonical not in seen_people:
+                suggestions.append(TagSuggestion(name=canonical, type="person"))
+                seen_people.add(canonical)
+
+        # Persist nodes (normalization happens inside _upsert_node)
         nodes: dict[tuple[str, str], Node] = {}
-        for tag in tag_dicts:
-            node = await _upsert_node(tag["name"], tag["type"])
-            nodes[(tag["name"], tag["type"])] = node
+        tag_dicts = []
+        normalized_suggestions: list = []
+        for s in suggestions:
+            node = await _upsert_node(s.name, s.type)
+            if node is None:
+                continue
+            nodes[(node.name, node.type)] = node
+            tag_dicts.append({"name": node.name, "type": node.type})
+            normalized_suggestions.append(TagSuggestion(name=node.name, type=node.type))
+        suggestions = normalized_suggestions
 
         entry.node_ids = list({str(n.id) for n in nodes.values()})
         await entry.save()

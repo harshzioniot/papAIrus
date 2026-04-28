@@ -15,20 +15,28 @@ def _build_prompt(transcript: str, layer1: dict) -> str:
     return f"""Analyze this journal entry & extract tags.
 
 Hints (grounding only):
-- People: {people_str}
+- People (BERT-detected, USE THESE EXACT NAMES): {people_str}
 - Emotion signal: {emotion_hint}
 
 Return ONLY a raw JSON array, no markdown. Each item: {{"name":"...","type":"..."}}
 
-Types & rules (tag counts are max per type):
-- emotion: descriptive phrases not single words (e.g. "quiet anxiety") — 2-4
-- theme: abstract life concepts (e.g. "work-life balance") — 1-3
-- habit: recurring behaviors (e.g. "late-night scrolling") — 0-2
-- person: named people or relationship refs (e.g. "my manager") — include hints if in text
-- event: specific things that happened (e.g. "bad meeting w/ boss") — 0-3
-- place: locations mentioned (e.g. "gym", "office") — 0-2
-- decision: choices made or considered (e.g. "quit sugar") — 0-2
-- outcome: results of decisions/habits (e.g. "better sleep") — 0-2
+CRITICAL — name standardization rules:
+- person tags MUST use the EXACT name from the BERT-detected list above (e.g. "Sarah", not "my_colleague_sarah" or "Sarah (colleague)")
+- person tag = first name only when possible. No descriptors, no underscores, no parentheticals.
+- All other tag names: lowercase, plain English noun phrases (e.g. "project deadline" not "the_project_deadline")
+- No underscores anywhere. Use spaces.
+- Reuse common forms: "anxiety" not "feeling anxious"; "office" not "the office"; "running" not "going running".
+- These names will be UPSERTED across many entries — consistency is critical for graph connectivity.
+
+Types & counts (max):
+- emotion: short noun phrase, lowercase (e.g. "anxiety", "quiet relief") — 2-4
+- theme: abstract life concept, lowercase (e.g. "work-life balance") — 1-3
+- habit: recurring behavior, lowercase (e.g. "late-night scrolling") — 0-2
+- person: from BERT hints, exact spelling — include all hints if in text
+- event: specific occurrence, lowercase (e.g. "demo day") — 0-3
+- place: location, lowercase single word/phrase (e.g. "gym", "office") — 0-2
+- decision: choice made, lowercase verb phrase (e.g. "quit coffee") — 0-2
+- outcome: result, lowercase (e.g. "better sleep") — 0-2
 
 Entry:
 {transcript}"""

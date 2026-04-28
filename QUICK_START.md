@@ -4,10 +4,23 @@
 
 **Module 1: Speech-to-Text (STT)** - COMPLETE
 - ✅ Hybrid backend (OpenAI API + Local Whisper)
-- ✅ Voice recording in frontend
-- ✅ Audio transcription
-- ✅ Text-only, Audio-only, or Both modes
-- ✅ Auto-tagging (stub)
+- ✅ Voice recording, text/audio/both modes
+
+**Module 2: Extraction Pipeline** - COMPLETE
+- ✅ Local BERT NER + DistilRoBERTa emotion (Layer 1)
+- ✅ LLM tag extraction across 8 node types (Layer 2, swappable: Gemini / OpenAI / Ollama)
+- ✅ Rule-based typed edge inference, persisted to MongoDB
+- ✅ Auto-fires in background on entry create + transcribe
+
+**Module 3: Knowledge Graph** - COMPLETE
+- ✅ NetworkX algorithms: PageRank centrality, community detection, trends, path finding
+- ✅ `/graph/insights` and `/graph/path` endpoints
+- ✅ Frontend visualisation with all 8 node types
+
+**Module 4: Conversation Layer** - COMPLETE
+- ✅ `/chat` endpoint with subgraph-grounded responses
+- ✅ Three personas: Stoic Listener, Socratic, Pattern Analyst
+- ✅ Frontend `/chat` page with persona selector and context-node display
 
 ---
 
@@ -129,13 +142,13 @@ curl -X POST "http://localhost:8000/entries/transcribe-upload" \
 ## 📊 API Endpoints
 
 ### Entries
-- `POST /entries` - Create entry (with optional audio)
+- `POST /entries` - Create entry (auto-fires NLP + LLM + edge pipeline in background)
 - `GET /entries` - List all entries
 - `GET /entries/{id}` - Get specific entry
 - `DELETE /entries/{id}` - Delete entry
-- `POST /entries/{id}/transcribe` - Transcribe entry's audio
+- `POST /entries/{id}/transcribe` - Transcribe entry's audio (auto-fires pipeline)
 - `POST /entries/transcribe-upload` - Quick transcribe (no entry)
-- `POST /entries/{id}/auto-tag` - Auto-tag entry (stub)
+- `POST /entries/{id}/auto-tag` - Manual re-tag trigger
 - `POST /entries/{id}/tags` - Set entry tags
 
 ### Nodes
@@ -143,8 +156,16 @@ curl -X POST "http://localhost:8000/entries/transcribe-upload" \
 - `POST /nodes` - Create node
 
 ### Graph & Digest
-- `GET /graph` - Get knowledge graph
-- `GET /digest` - Get weekly digest
+- `GET /graph` - Visualisation graph (typed edges)
+- `GET /graph/insights` - PageRank centrality + community detection + trending nodes
+- `GET /graph/path?from_id=&to_id=` - Shortest causal path between two nodes
+- `GET /digest` - Weekly digest (graph-informed reflection)
+
+### Chat
+- `POST /chat` - Talk to a philosopher persona, grounded in your graph
+  - Body: `{ "message": "...", "persona": "stoic" | "socratic" | "analyst" }`
+  - `persona` is optional; falls back to `CHAT_PERSONA` env (default: `stoic`)
+  - Returns: `{ "reply": "...", "context_nodes": [...], "persona": "..." }`
 
 ---
 
@@ -159,12 +180,16 @@ DB_NAME=papairus
 
 # STT Backend
 WHISPER_BACKEND=api              # or "local"
+WHISPER_MODEL_SIZE=base          # tiny|base|small|medium|large (local only)
 
-# For API backend
-OPENAI_API_KEY=sk-xxx
+# LLM Provider — used by analysis_service AND chat_service
+LLM_PROVIDER=gemini              # gemini | openai | ollama
+GEMINI_API_KEY=...               # if LLM_PROVIDER=gemini
+OPENAI_API_KEY=sk-...            # if LLM_PROVIDER=openai (also used by API STT)
+OLLAMA_MODEL=mistral             # if LLM_PROVIDER=ollama, also `ollama pull mistral`
 
-# For local backend (no API key needed!)
-WHISPER_MODEL_SIZE=base          # tiny|base|small|medium|large
+# Chat
+CHAT_PERSONA=stoic               # stoic | socratic | analyst (default if request omits it)
 ```
 
 ---
@@ -258,20 +283,11 @@ papAIrus/
 
 ## ✨ What's Next?
 
-**Module 2: Emotion/Theme Extraction**
-- Replace auto-tag stub with real NLP
-- Extract emotions, themes, people, habits from transcripts
-- Auto-create and link nodes
-
-**Module 3: Knowledge Graph**
-- Build connections between entries
-- Visualize relationships
-- Find patterns over time
-
-**Module 4: Weekly Digest**
-- Generate insights from week's entries
-- Mood trends, streaks, reflections
-- AI-powered summaries
+- Persistent multi-turn chat history (currently each `/chat` request is independent)
+- Voice input on the `/chat` page (reuse the record orb)
+- Streaming LLM responses
+- Improved subgraph retrieval (semantic match instead of substring)
+- User authentication / multi-user support
 
 ---
 

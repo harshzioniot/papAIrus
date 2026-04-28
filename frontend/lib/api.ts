@@ -1,10 +1,31 @@
 // All requests go through Next.js rewrites → /api/* → http://localhost:8000/*
 const BASE = "/api";
 
+export type NodeType =
+  | "emotion"
+  | "person"
+  | "theme"
+  | "habit"
+  | "event"
+  | "place"
+  | "decision"
+  | "outcome";
+
+export const NODE_TYPES: NodeType[] = [
+  "emotion",
+  "person",
+  "theme",
+  "habit",
+  "event",
+  "place",
+  "decision",
+  "outcome",
+];
+
 export interface NodeOut {
   id: string;
   name: string;
-  type: "emotion" | "person" | "theme" | "habit";
+  type: NodeType;
   color_hex: string;
 }
 
@@ -162,6 +183,28 @@ export const getGraph = (type?: string, since?: string) => {
 // Digest
 export const getDigest = (week?: string) =>
   req<DigestOut>(`/digest${week ? "?week=" + week : ""}`);
+
+// Chat
+export type Persona = "stoic" | "socratic" | "analyst";
+
+export interface ContextNode {
+  id: string;
+  name: string;
+  type: string;
+}
+
+export interface ChatOut {
+  reply: string;
+  context_nodes: ContextNode[];
+  persona: Persona;
+}
+
+export const chat = (message: string, persona?: Persona) =>
+  req<ChatOut>("/chat", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ message, persona }),
+  });
 
 const BACKEND_DIRECT = process.env.NEXT_PUBLIC_BACKEND_URL ?? "http://localhost:8000";
 export const audioUrl = (path: string) => `${BACKEND_DIRECT}/uploads/${path}`;

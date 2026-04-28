@@ -38,48 +38,22 @@ Set `LLM_PROVIDER` in `.env`:
 
 ---
 
-## What is NOT built yet — the conversation layer
+## Conversation layer — DONE
 
-This is the core missing piece. The graph is built and algorithms run, but **nothing talks back to the user yet**.
+Built end-to-end:
 
-### The gap
-When the user speaks to the philosopher, the LLM needs to receive:
-```
-system prompt (persona: Stoic / Socratic / Analyst)
-  + relevant subgraph  ← pulled from graph based on what the user just said
-  + 2-3 raw transcript snippets  ← entries linked to those nodes
-  + current user message
-→ LLM responds as the philosopher
-```
+- **`backend/services/chat_service.py`** — keyword → matched nodes → 1-hop edges → entry snippets → persona-prompted LLM call. Three providers (Gemini/OpenAI/Ollama) reusing the same env switch as `analysis_service.py`.
+- **`backend/routers/chat.py`** — `POST /chat` with `{ message, persona? }`, returns `{ reply, context_nodes, persona }`. Falls back to `CHAT_PERSONA` env if `persona` omitted.
+- **`backend/schemas.py`** — `ChatRequest`, `ChatOut`, `ContextNode`.
+- **`frontend/app/chat/page.tsx`** — persona selector, message thread, context-node chips.
+- **`frontend/lib/api.ts`** — `chat()` client + types.
+- **`frontend/components/Sidebar.tsx`** — Chat nav entry.
 
-Right now there is no `/chat` endpoint, no persona prompt, and no subgraph retrieval.
-
-### What needs to be built
-
-#### 1. Subgraph retrieval
-Given the user's message:
-- Match keywords against node names in the graph
-- Pull their 1-hop neighbourhood from the Edge collection
-- Fetch 2-3 most recent journal entries linked to those nodes
-- Build a compact context string (not the full history — just the relevant slice)
-
-#### 2. `chat_service.py`
-- Builds context payload: subgraph summary + entry snippets
-- Sends to LLM with persona system prompt
-- Returns response text
-
-#### 3. `POST /chat` endpoint
-```json
-Request:  { "message": "I've been feeling anxious lately", "persona": "socratic" }
-Response: { "reply": "You've mentioned anxiety 7 times this week...", "nodes_used": [...] }
-```
-
-#### 4. Persona system prompts (from architecture doc)
-Three modes, user-configurable:
-
-**Stoic Listener** — never judges, reflects back, minimal output, speaks only when significant
-**Socratic Mode** — asks one question that makes the user think harder, never provides the answer
-**Pattern Analyst** — surfaces what the graph found, e.g. "I've noticed you mention anxiety every time you have back-to-back meetings"
+### Open follow-ups
+- Multi-turn history (each request is currently stateless)
+- Streaming responses
+- Semantic subgraph retrieval (currently substring-match against node names)
+- Voice input on `/chat`
 
 ---
 

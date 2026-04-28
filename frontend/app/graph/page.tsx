@@ -3,19 +3,23 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import dynamic from "next/dynamic";
 import Sidebar from "@/components/Sidebar";
-import { getGraph, getEntries, GraphNode, GraphEdge, EntryOut } from "@/lib/api";
+import { getGraph, getEntries, GraphNode, GraphEdge, EntryOut, NodeType, NODE_TYPES } from "@/lib/api";
 
 // react-force-graph-2d requires browser APIs — load client-side only
 const ForceGraph2D = dynamic(() => import("react-force-graph-2d"), { ssr: false });
 
-type FilterType = "all" | "emotion" | "person" | "theme" | "habit";
+type FilterType = "all" | NodeType;
 type DateRange = "month" | "all";
 
 const TYPE_BORDER: Record<string, string> = {
-  emotion: "#5c52c2",
-  person:  "#1858a0",
-  theme:   "#0a8c62",
-  habit:   "#b06010",
+  emotion:  "#5c52c2",
+  person:   "#1858a0",
+  theme:    "#0a8c62",
+  habit:    "#b06010",
+  event:    "#7a4ec2",
+  place:    "#0d7a55",
+  decision: "#c03060",
+  outcome:  "#3070c0",
 };
 
 interface FGNode extends GraphNode {
@@ -30,8 +34,19 @@ export default function GraphPage() {
   const [filterType, setFilterType] = useState<FilterType>("all");
   const [dateRange, setDateRange] = useState<DateRange>("month");
   const [selected, setSelected] = useState<FGNode | null>(null);
+  const [hoveredId, setHoveredId] = useState<string | null>(null);
   const [entries, setEntries] = useState<EntryOut[]>([]);
-  const fgRef = useRef<{ zoomToFit: (ms?: number) => void; zoom: (k: number, ms?: number) => void } | null>(null);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const fgRef = useRef<any>(null);
+
+  // Configure d3 forces once the graph mounts — spread nodes out, prevent overlap
+  useEffect(() => {
+    const fg = fgRef.current;
+    if (!fg) return;
+    fg.d3Force?.("charge")?.strength(-260).distanceMax(420);
+    fg.d3Force?.("link")?.distance(95);
+    if (fg.d3ReheatSimulation) fg.d3ReheatSimulation();
+  }, [graphData]);
 
   const load = useCallback(async () => {
     const since = dateRange === "month"
@@ -81,23 +96,60 @@ export default function GraphPage() {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const nodeCanvasObject = (rawNode: any, ctx: CanvasRenderingContext2D, globalScale: number) => {
     const node = rawNode as FGNode & { x?: number; y?: number };
-    const r = Math.max(6, Math.min(18, 6 + node.entry_count * 1.5));
+    const x = node.x ?? 0;
+    const y = node.y ?? 0;
+    const r = Math.max(7, Math.min(20, 7 + Math.sqrt(node.entry_count) * 3));
     const isSelected = selected?.id === node.id;
+    const isHover = hoveredId === node.id;
+    const baseColor = TYPE_BORDER[node.type] ?? "#999";
 
+    // Outer glow on selected/hover — Apple-style focus halo
+    if (isSelected || isHover) {
+      ctx.save();
+      ctx.shadowColor = baseColor;
+      ctx.shadowBlur = isSelected ? 18 : 10;
+      ctx.beginPath();
+      ctx.arc(x, y, r, 0, 2 * Math.PI);
+      ctx.fillStyle = baseColor + "22";
+      ctx.fill();
+      ctx.restore();
+    }
+
+    // Subtle drop shadow for depth
+    ctx.save();
+    ctx.shadowColor = "rgba(0,0,0,0.08)";
+    ctx.shadowBlur = 4;
+    ctx.shadowOffsetY = 1;
     ctx.beginPath();
-    ctx.arc(node.x ?? 0, node.y ?? 0, r, 0, 2 * Math.PI);
-    ctx.fillStyle = node.color_hex + "33";
+    ctx.arc(x, y, r, 0, 2 * Math.PI);
+    ctx.fillStyle = node.color_hex + "55";
     ctx.fill();
-    ctx.strokeStyle = TYPE_BORDER[node.type] ?? "#999";
-    ctx.lineWidth = isSelected ? 2.5 : 1.5;
+    ctx.restore();
+
+    // Clean ring
+    ctx.beginPath();
+    ctx.arc(x, y, r, 0, 2 * Math.PI);
+    ctx.strokeStyle = baseColor;
+    ctx.lineWidth = isSelected ? 2.2 : 1.2;
     ctx.stroke();
 
-    const fontSize = Math.max(8, 10 / globalScale);
-    ctx.font = `${fontSize}px Inter,sans-serif`;
-    ctx.fillStyle = TYPE_BORDER[node.type] ?? "#999";
-    ctx.textAlign = "center";
-    ctx.textBaseline = "middle";
-    ctx.fillText(node.name, node.x ?? 0, node.y ?? 0);
+    // Label — only when zoomed in enough, or for selected/hover
+    const showLabel = globalScale > 1.4 || isSelected || isHover;
+    if (showLabel) {
+      const fontSize = Math.max(10, 11 / Math.max(0.7, globalScale));
+      ctx.font = `500 ${fontSize}px Inter, -apple-system, sans-serif`;
+      ctx.textAlign = "center";
+      ctx.textBaseline = "top";
+
+      // White halo behind text for legibility
+      const labelY = y + r + 4;
+      ctx.lineWidth = 4;
+      ctx.strokeStyle = "rgba(255,255,255,0.95)";
+      ctx.strokeText(node.name, x, labelY);
+
+      ctx.fillStyle = isSelected ? baseColor : "rgba(40,40,40,0.95)";
+      ctx.fillText(node.name, x, labelY);
+    }
   };
 
   return (
@@ -107,7 +159,7 @@ export default function GraphPage() {
       {/* Filter sidebar */}
       <aside style={{ width: 160, background: "var(--bg2)", borderRight: "1px solid var(--border)", padding: "16px 10px", display: "flex", flexDirection: "column", gap: 4, flexShrink: 0 }}>
         <div style={{ fontSize: 9, color: "var(--text3)", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 4 }}>Filter nodes</div>
-        {(["all", "emotion", "person", "theme", "habit"] as FilterType[]).map((t) => (
+        {(["all", ...NODE_TYPES] as FilterType[]).map((t) => (
           <button
             key={t}
             onClick={() => setFilterType(t)}
@@ -172,9 +224,21 @@ export default function GraphPage() {
               nodeLabel={nodeLabel}
               nodeCanvasObject={nodeCanvasObject as never}
               nodeCanvasObjectMode={() => "replace"}
-              linkColor={() => "var(--border2)"}
-              linkWidth={(link: unknown) => Math.sqrt((link as GraphEdge).weight) * 0.8}
+              nodeRelSize={6}
+              linkColor={() => "rgba(140,140,140,0.18)"}
+              linkWidth={(link: unknown) => 0.6 + Math.sqrt((link as GraphEdge).weight) * 0.5}
+              linkDirectionalParticles={(link: unknown) =>
+                selected && ((link as GraphEdge).source === selected.id || (link as GraphEdge).target === selected.id) ? 2 : 0
+              }
+              linkDirectionalParticleSpeed={0.006}
+              linkDirectionalParticleWidth={2}
+              linkDirectionalParticleColor={() => "rgba(40,140,100,0.7)"}
+              cooldownTicks={120}
+              warmupTicks={60}
+              d3AlphaDecay={0.02}
+              d3VelocityDecay={0.35}
               onNodeClick={(node: unknown) => setSelected(node as FGNode)}
+              onNodeHover={(node: unknown) => setHoveredId((node as FGNode | null)?.id ?? null)}
               backgroundColor="transparent"
               width={undefined}
               height={undefined}

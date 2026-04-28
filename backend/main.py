@@ -11,7 +11,7 @@ from beanie import init_beanie
 
 from models import Entry, Node, Edge
 from routers import entries, nodes, graph, digest, chat
-from services import nlp_service
+from services import nlp_service, embedding_service
 
 MONGO_URI = os.getenv("MONGO_URI", "mongodb://localhost:27017")
 DB_NAME = os.getenv("DB_NAME", "papairus")
@@ -39,12 +39,28 @@ def _print_banner():
     print("=" * 44 + "\n")
 
 
+async def _backfill_embeddings():
+    """Embed any entries that pre-date the embedding column."""
+    pending = await Entry.find({"embedding": None, "transcript": {"$ne": ""}}).to_list()
+    if not pending:
+        return
+    print(f"  Backfilling embeddings for {len(pending)} existing entries…")
+    for e in pending:
+        if not e.transcript.strip():
+            continue
+        e.embedding = await asyncio.to_thread(embedding_service.embed, e.transcript)
+        await e.save()
+    print(f"  ✓ Embedded {len(pending)} entries.")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     _print_banner()
     client = AsyncIOMotorClient(MONGO_URI)
     await init_beanie(database=client[DB_NAME], document_models=[Entry, Node, Edge])
     await asyncio.to_thread(nlp_service.load_models)
+    await asyncio.to_thread(embedding_service.load_model)
+    await _backfill_embeddings()
     yield
     client.close()
 
@@ -53,7 +69,7 @@ app = FastAPI(title="papAIrus API", version="0.1.0", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
+    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000", "http://localhost:3001", "http://127.0.0.1:3001"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
